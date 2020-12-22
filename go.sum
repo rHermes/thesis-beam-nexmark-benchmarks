@@ -1,0 +1,4 @@
+github.com/alecthomas/repr v0.0.0-20201120212035-bb82daffcca2 h1:G5TeG64Ox4OWq2YwlsxS7nOedU8vbGgNRTRDAjGvDCk=
+github.com/alecthomas/repr v0.0.0-20201120212035-bb82daffcca2/go.mod h1:2kn6fqh/zIyPLmm3ugklbEi5hg5wS435eygvNfaDQL8=
+github.com/flink-go/api v0.0.1 h1:YK3TBZLV4TivPhjJ+Z316b2mSg72sPy3IOcm21OyaO4=
+github.com/flink-go/api v0.0.1/go.mod h1:nzM6X8dmpVRe3jqfQ4y05JeTIRWZPD4iT6kyEaFBG9A=
