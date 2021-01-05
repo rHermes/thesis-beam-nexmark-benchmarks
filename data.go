@@ -1,9 +1,19 @@
 package main
 
+type Result struct {
+	JSResult
+	Extra Extra `json:"extra"`
+}
+
+type Extra struct {
+	FasterCopy bool `json:"faster_copy"`
+}
+
 type JSResult struct {
 	Config Config `json:"config"`
 	Perf   Perf   `json:"perf"`
 }
+
 type SessionGap struct {
 	Millis          int `json:"millis"`
 	StandardDays    int `json:"standardDays"`
@@ -11,6 +21,7 @@ type SessionGap struct {
 	StandardMinutes int `json:"standardMinutes"`
 	StandardSeconds int `json:"standardSeconds"`
 }
+
 type Config struct {
 	AuctionSkip                      int         `json:"auctionSkip"`
 	AvgAuctionByteSize               int         `json:"avgAuctionByteSize"`
@@ -59,12 +70,14 @@ type Config struct {
 	WindowPeriodSec                  int         `json:"windowPeriodSec"`
 	WindowSizeSec                    int         `json:"windowSizeSec"`
 }
+
 type Snapshots struct {
 	NumEvents     int     `json:"numEvents"`
 	NumResults    int     `json:"numResults"`
 	RuntimeSec    float64 `json:"runtimeSec"`
 	SecSinceStart int     `json:"secSinceStart"`
 }
+
 type Perf struct {
 	Errors             []interface{} `json:"errors"`
 	EventBytesPerSec   float64       `json:"eventBytesPerSec"`

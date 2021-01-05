@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -67,6 +68,40 @@ func (b *Benchmark) Run(logger *zap.Logger, gradlePath, beamPath string) ([]byte
 	return o, nil
 }
 
+// Reads in the javascript file and adds the extra info to the result.
+func (b *Benchmark) AugmentResults(logger *zap.Logger) (*Result, error) {
+	fp, err := os.Open(b.JavascriptFilename)
+	if err != nil {
+		return nil, err
+	}
+	defer fp.Close()
+	vm, _, err := otto.Run(fp)
+	if err != nil {
+		return nil, err
+	}
+	all, err := vm.Eval("JSON.stringify(all)")
+	if err != nil {
+		return nil, err
+	}
+
+	var jres []JSResult
+	if err := json.Unmarshal([]byte(all.String()), &jres); err != nil {
+		return nil, err
+	}
+
+	if len(jres) != 1 {
+		return nil, errors.New("Didn't expect more than one JSResult")
+	}
+
+	// Return the augmented result
+	return &Result{
+		JSResult: jres[0],
+		Extra: Extra{
+			FasterCopy: b.FasterCopy,
+		},
+	}, nil
+}
+
 func parseJSReader(logger *zap.Logger, reader io.Reader) ([]JSResult, error) {
 	vm, _, err := otto.Run(reader)
 	if err != nil {
@@ -125,11 +160,15 @@ func loadResults(logger *zap.Logger, dir string) ([]JSResult, error) {
 func battery01(logger *zap.Logger, outdir string) error {
 	bb := &Benchmark{
 		FlinkMaster:        "[local]",
-		JavascriptFilename: fmt.Sprintf("%s/data.%s.js", OutputPath, time.Now().UTC().Format("20060102150405")),
+		JavascriptFilename: fmt.Sprintf("%s/battery01.%s.js", outdir, time.Now().UTC().Format("20060102150405")),
 		FasterCopy:         true,
 		NumEventGenerators: 10,
-		NumEvents:          10000,
+		NumEvents:          100000,
 		Query:              PassthroughQuery,
+	}
+
+	for i := 0; i < 10; i++ {
+
 	}
 
 	gg, err := bb.Run(logger, GradlePath, BeamPath)
@@ -148,8 +187,8 @@ func main() {
 	}
 	defer logger.Sync()
 
-	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results/"
-	if err := battery01(logger, basedir); err != nil {
+	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
+	if err := battery01(logger, basedir+"/battery01/"); err != nil {
 		logger.Fatal("Couldn't run benchmark", zap.Error(err))
 	}
 }
