@@ -4,14 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/robertkrimen/otto"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -35,7 +34,7 @@ type Benchmark struct {
 	FasterCopy bool
 }
 
-func (b *Benchmark) Run(logger *zap.Logger, gradlePath, beamPath string) ([]byte, error) {
+func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]byte, error) {
 	nargs := []string{
 		"--runner=FlinkRunner",
 		"--streaming",
@@ -66,7 +65,7 @@ func (b *Benchmark) Run(logger *zap.Logger, gradlePath, beamPath string) ([]byte
 }
 
 // Reads in the javascript file and adds the extra info to the result.
-func (b *Benchmark) AugmentResults(logger *zap.Logger) (*Result, error) {
+func (b *Benchmark) AugmentResults(logger zerolog.Logger) (*Result, error) {
 	fp, err := os.Open(b.JavascriptFilename)
 	if err != nil {
 		return nil, err
@@ -100,7 +99,7 @@ func (b *Benchmark) AugmentResults(logger *zap.Logger) (*Result, error) {
 }
 
 // Battery one
-func battery01(logger *zap.Logger, outdir string) error {
+func battery01(logger zerolog.Logger, outdir string) error {
 	bb := &Benchmark{
 		FlinkMaster:        "[local]",
 		JavascriptFilename: fmt.Sprintf("%s/battery01.js", outdir),
@@ -113,28 +112,26 @@ func battery01(logger *zap.Logger, outdir string) error {
 	bb = bb
 
 	for i := 0; i < 10; i++ {
-		logger := logger.With(zap.Int("run", i))
-		logger.Debug("Starting run")
+		logger := logger.With().Int("run", i).Logger()
+		logger.Debug().Msg("Starting run")
 
 		start := time.Now()
 		gg, err := bb.Run(logger, GradlePath, BeamPath)
 		dur := time.Since(start)
 
 		if err != nil {
-			logger.Error("Error during run", zap.Error(err))
+			logger.Error().Err(err).Msg("Error during run")
 			continue
 		} else {
-			logger.Debug("Finished run", zap.Duration("dur", dur), zap.Int("outputSize", len(gg)))
+			logger.Info().Dur("dur", dur).Int("outputSize", len(gg)).Msg("Finished run")
 		}
 
 		res, err := bb.AugmentResults(logger)
 		if err != nil {
-			logger.Error("Error during result augmentation", zap.Error(err))
+			logger.Error().Err(err).Msg("Error during augmentation")
 			return err
 		}
 		res = res
-		logger.Info("We have finished the run")
-
 	}
 
 	// gg, err := bb.Run(logger, GradlePath, BeamPath)
@@ -147,14 +144,11 @@ func battery01(logger *zap.Logger, outdir string) error {
 }
 
 func main() {
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		log.Fatalf("Couldn't create zap logger: %s\n", err.Error())
-	}
-	defer logger.Sync()
+	logger := zerolog.New(zerolog.NewConsoleWriter())
+	logger = logger.Level(zerolog.InfoLevel)
 
 	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
 	if err := battery01(logger, basedir+"/battery01/"); err != nil {
-		logger.Fatal("Couldn't run benchmark", zap.Error(err))
+		logger.Fatal().Err(err).Msg("Couldn't run benchmark")
 	}
 }
