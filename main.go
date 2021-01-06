@@ -4,12 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -102,80 +99,49 @@ func (b *Benchmark) AugmentResults(logger *zap.Logger) (*Result, error) {
 	}, nil
 }
 
-func parseJSReader(logger *zap.Logger, reader io.Reader) ([]JSResult, error) {
-	vm, _, err := otto.Run(reader)
-	if err != nil {
-		return nil, err
-	}
-	all, err := vm.Eval("JSON.stringify(all)")
-	if err != nil {
-		return nil, err
-	}
-	// fmt.Println(all.String())
-
-	var res []JSResult
-	if err := json.Unmarshal([]byte(all.String()), &res); err != nil {
-		return nil, err
-	}
-
-	return res, nil
-}
-
-func parseJSFile(logger *zap.Logger, path string) ([]JSResult, error) {
-	fp, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer fp.Close()
-
-	return parseJSReader(logger, fp)
-}
-
-func loadResults(logger *zap.Logger, dir string) ([]JSResult, error) {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var reses []JSResult
-	for _, file := range files {
-		logger := logger.With(zap.String("file", file.Name()))
-		if !strings.HasSuffix(file.Name(), ".js") {
-			logger.Debug("Skipping, didn't match datafile")
-			continue
-		}
-
-		mres, err := parseJSFile(logger, filepath.Join(dir, file.Name()))
-		if err != nil {
-			return nil, err
-		}
-		logger.Debug("Parsed just fine")
-		for _, res := range mres {
-			reses = append(reses, res)
-		}
-	}
-	return reses, nil
-}
-
 // Battery one
 func battery01(logger *zap.Logger, outdir string) error {
 	bb := &Benchmark{
 		FlinkMaster:        "[local]",
-		JavascriptFilename: fmt.Sprintf("%s/battery01.%s.js", outdir, time.Now().UTC().Format("20060102150405")),
+		JavascriptFilename: fmt.Sprintf("%s/battery01.js", outdir),
+		// JavascriptFilename: fmt.Sprintf("%s/battery01.%s.js", outdir, time.Now().UTC().Format("20060102150405")),
 		FasterCopy:         true,
 		NumEventGenerators: 10,
 		NumEvents:          100000,
 		Query:              PassthroughQuery,
 	}
+	bb = bb
 
 	for i := 0; i < 10; i++ {
+		logger := logger.With(zap.Int("run", i))
+		logger.Debug("Starting run")
+
+		start := time.Now()
+		gg, err := bb.Run(logger, GradlePath, BeamPath)
+		dur := time.Since(start)
+
+		if err != nil {
+			logger.Error("Error during run", zap.Error(err))
+			continue
+		} else {
+			logger.Debug("Finished run", zap.Duration("dur", dur), zap.Int("outputSize", len(gg)))
+		}
+
+		res, err := bb.AugmentResults(logger)
+		if err != nil {
+			logger.Error("Error during result augmentation", zap.Error(err))
+			return err
+		}
+		res = res
+		logger.Info("We have finished the run")
 
 	}
 
-	gg, err := bb.Run(logger, GradlePath, BeamPath)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%s\n", gg)
+	// gg, err := bb.Run(logger, GradlePath, BeamPath)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Printf("%s\n", gg)
 
 	return nil
 }

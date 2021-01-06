@@ -75,7 +75,7 @@ type Snapshots struct {
 	NumEvents     int     `json:"numEvents"`
 	NumResults    int     `json:"numResults"`
 	RuntimeSec    float64 `json:"runtimeSec"`
-	SecSinceStart int     `json:"secSinceStart"`
+	SecSinceStart float64 `json:"secSinceStart"`
 }
 
 type Perf struct {
