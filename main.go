@@ -99,53 +99,57 @@ func (b *Benchmark) AugmentResults(logger zerolog.Logger) (*Result, error) {
 }
 
 // Battery one
+//
+// Simple test, create an aggregated output file with
 func battery01(logger zerolog.Logger, outdir string) error {
-	bb := &Benchmark{
+	// Open a file for writing
+	aout := fmt.Sprintf("%s/battery01.%s.json", outdir, time.Now().UTC().Format("20060102150405"))
+	fp, err := os.OpenFile(aout, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+
+	bb := Benchmark{
 		FlinkMaster:        "[local]",
 		JavascriptFilename: fmt.Sprintf("%s/battery01.js", outdir),
-		// JavascriptFilename: fmt.Sprintf("%s/battery01.%s.js", outdir, time.Now().UTC().Format("20060102150405")),
-		FasterCopy:         true,
-		NumEventGenerators: 10,
-		NumEvents:          100000,
-		Query:              PassthroughQuery,
-	}
-	bb = bb
-
-	for i := 0; i < 10; i++ {
-		logger := logger.With().Int("run", i).Logger()
-		logger.Debug().Msg("Starting run")
-
-		start := time.Now()
-		gg, err := bb.Run(logger, GradlePath, BeamPath)
-		dur := time.Since(start)
-
-		if err != nil {
-			logger.Error().Err(err).Msg("Error during run")
-			continue
-		} else {
-			logger.Info().Dur("dur", dur).Int("outputSize", len(gg)).Msg("Finished run")
-		}
-
-		res, err := bb.AugmentResults(logger)
-		if err != nil {
-			logger.Error().Err(err).Msg("Error during augmentation")
-			return err
-		}
-		res = res
+		// NumEvents:          100000,
+		Query: PassthroughQuery,
 	}
 
-	// gg, err := bb.Run(logger, GradlePath, BeamPath)
-	// if err != nil {
-	// 	return err
+	mutator := SwapFasterCopy(
+		RepeatRuns(10)(
+			TimerMutator(
+				StoreBench(fp),
+			),
+		),
+	)
+
+	if err := mutator(logger, bb); err != nil {
+		return err
+	}
+
+	// for i := 0; i < 10; i++ {
+	// 	logger := logger.With().Int("run", i).Logger()
+	// 	logger.Debug().Msg("Starting run")
+
+	// 	if err := mutator(logger, bb); err != nil {
+	// 		logger.Error().Err(err).Msg("Error during run")
+	// 		break
+	// 	}
 	// }
-	// fmt.Printf("%s\n", gg)
 
 	return nil
 }
 
 func main() {
-	logger := zerolog.New(zerolog.NewConsoleWriter())
-	logger = logger.Level(zerolog.InfoLevel)
+	opts := func(w *zerolog.ConsoleWriter) {
+		w.NoColor = true
+		w.TimeFormat = time.Stamp
+	}
+	logger := zerolog.New(zerolog.NewConsoleWriter(opts)).
+		With().Timestamp().Logger().Level(zerolog.InfoLevel)
+	// logger = logger.Level(zerolog.InfoLevel)
 
 	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
 	if err := battery01(logger, basedir+"/battery01/"); err != nil {
