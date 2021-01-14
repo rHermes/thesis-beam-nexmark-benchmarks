@@ -15,7 +15,7 @@ func VaryNumberOfGenerators(start, end, step int) Middleware {
 	return func(mut Mutator) Mutator {
 		return func(logger zerolog.Logger, b Benchmark) error {
 			for i := start; i < end; i += step {
-				b.NumEventGenerators = i
+				b.NumEventGenerators = IntPtr(i)
 				logger := logger.With().Int("numGenerators", i).Logger()
 				if err := mut(logger, b); err != nil {
 					return err

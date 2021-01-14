@@ -28,8 +28,8 @@ type Benchmark struct {
 	JavascriptFilename string
 	Query              string
 
-	NumEventGenerators int
-	NumEvents          int
+	NumEventGenerators *int
+	NumEvents          *int
 
 	FasterCopy bool
 }
@@ -43,10 +43,14 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 		"--debug=true",
 		fmt.Sprintf("--flinkMaster=%s", b.FlinkMaster),
 		fmt.Sprintf("--query=%s", b.Query),
-		fmt.Sprintf("--numEventGenerators=%d", b.NumEventGenerators),
-		fmt.Sprintf("--numEvents=%d", b.NumEvents),
 		fmt.Sprintf("--javascriptFilename=%s", b.JavascriptFilename),
 		fmt.Sprintf("--fasterCopy=%t", b.FasterCopy),
+	}
+	if b.NumEvents != nil {
+		nargs = append(nargs, fmt.Sprintf("--numEvents=%d", *b.NumEvents))
+	}
+	if b.NumEventGenerators != nil {
+		nargs = append(nargs, fmt.Sprintf("--numEventGenerators=%d", *b.NumEventGenerators))
 	}
 	args := []string{
 		"-p", beamPath,
@@ -148,7 +152,7 @@ func main() {
 		w.TimeFormat = time.Stamp
 	}
 	logger := zerolog.New(zerolog.NewConsoleWriter(opts)).
-		With().Timestamp().Logger().Level(zerolog.InfoLevel)
+		With().Timestamp().Logger().Level(zerolog.DebugLevel)
 	// logger = logger.Level(zerolog.InfoLevel)
 
 	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
