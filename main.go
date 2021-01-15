@@ -31,6 +31,8 @@ type Benchmark struct {
 	NumEventGenerators *int
 	NumEvents          *int
 
+	CoderStrategy string
+
 	FasterCopy bool
 }
 
@@ -52,6 +54,10 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	if b.NumEventGenerators != nil {
 		nargs = append(nargs, fmt.Sprintf("--numEventGenerators=%d", *b.NumEventGenerators))
 	}
+	if b.CoderStrategy != "" {
+		nargs = append(nargs, fmt.Sprintf("--coderStrategy=%s", b.CoderStrategy))
+	}
+
 	args := []string{
 		"-p", beamPath,
 		"-Pnexmark.runner=:runners:flink:1.10",
@@ -60,11 +66,14 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 		":sdks:java:testing:nexmark:run",
 	}
 
+	fmt.Printf("%s %s\n", GradlePath, strings.Join(args, " "))
 	c := exec.Command(GradlePath, args...)
-	o, err := c.CombinedOutput()
+	c.Stderr = os.Stderr
+	o, err := c.Output()
 	if err != nil {
 		return nil, err
 	}
+	// return []byte{}, nil
 	return o, nil
 }
 
@@ -117,14 +126,16 @@ func battery01(logger zerolog.Logger, outdir string) error {
 	bb := Benchmark{
 		FlinkMaster:        "[local]",
 		JavascriptFilename: fmt.Sprintf("%s/battery01.js", outdir),
-		// NumEvents:          100000,
-		Query: PassthroughQuery,
+		NumEvents:          IntPtr(1000000),
+		Query:              PassthroughQuery,
 	}
 
-	mutator := SwapFasterCopy(
-		RepeatRuns(10)(
-			TimerMutator(
-				StoreBench(fp),
+	mutator := VaryCoderStrategy([]string{"AVRO", "JAVA", "HAND"})(
+		SwapFasterCopy(
+			RepeatRuns(10)(
+				TimerMutator(
+					StoreBench(fp),
+				),
 			),
 		),
 	)

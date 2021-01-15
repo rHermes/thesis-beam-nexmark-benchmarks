@@ -11,6 +11,7 @@ import (
 type Mutator func(zerolog.Logger, Benchmark) error
 type Middleware func(Mutator) Mutator
 
+// Vary the number of generators.
 func VaryNumberOfGenerators(start, end, step int) Middleware {
 	return func(mut Mutator) Mutator {
 		return func(logger zerolog.Logger, b Benchmark) error {
@@ -26,6 +27,23 @@ func VaryNumberOfGenerators(start, end, step int) Middleware {
 	}
 }
 
+func VaryCoderStrategy(strats []string) Middleware {
+	return func(mut Mutator) Mutator {
+		return func(logger zerolog.Logger, b Benchmark) error {
+			for _, strat := range strats {
+				logger := logger.With().Str("coder", strat).Logger()
+				b.CoderStrategy = strat
+				if err := mut(logger, b); err != nil {
+					logger.Error().Err(err).Msg("Error in some sort")
+					return err
+				}
+			}
+			return nil
+		}
+	}
+}
+
+// RepeatRuns repeats the mutator to run x amount of times
 func RepeatRuns(times int) Middleware {
 	return func(mut Mutator) Mutator {
 		return func(logger zerolog.Logger, b Benchmark) error {
