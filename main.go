@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/google/renameio"
 	"github.com/robertkrimen/otto"
 	"github.com/rs/zerolog"
 )
@@ -20,7 +22,44 @@ const (
 )
 
 const (
-	PassthroughQuery = "PASSTHROUGH"
+	PassthroughQuery                 = "PASSTHROUGH"
+	CurrencyConversionQuery          = "CURRENCY_CONVERSION"
+	SelectionQuery                   = "SELECTION"
+	LocalItemSuggestionQuery         = "LOCAL_ITEM_SUGGESTION"
+	AveragePriceForCategoryQuery     = "AVERAGE_PRICE_FOR_CATEGORY"
+	HotItemsQuery                    = "HOT_ITEMS"
+	AverageSellingPriceBySellerQuery = "AVERAGE_SELLING_PRICE_BY_SELLER"
+	HighestBidQuery                  = "HIGHEST_BID"
+	MonitorNewUsersQuery             = "MONITOR_NEW_USERS"
+	WinningBidsQuery                 = "WINNING_BIDS"
+	LogToShardedFilesQuery           = "LOG_TO_SHARDED_FILES"
+	UserSessionsQuery                = "USER_SESSIONS"
+	ProcessingTimeWindowsQuery       = "PROCESSING_TIME_WINDOWS"
+	BoundedSideInputJoinQuery        = "BOUNDED_SIDE_INPUT_JOIN"
+	SessionSideInputJoinQuery        = "SESSION_SIDE_INPUT_JOIN"
+
+	// Max we can do with different coders, don't know why
+	MAX_EVENTS = 991683
+)
+
+var (
+	AllQueries = []string{
+		PassthroughQuery,
+		CurrencyConversionQuery,
+		SelectionQuery,
+		LocalItemSuggestionQuery,
+		AveragePriceForCategoryQuery,
+		HotItemsQuery,
+		AverageSellingPriceBySellerQuery,
+		HighestBidQuery,
+		MonitorNewUsersQuery,
+		WinningBidsQuery,
+		// LogToShardedFilesQuery,
+		UserSessionsQuery,
+		ProcessingTimeWindowsQuery,
+		BoundedSideInputJoinQuery,
+		SessionSideInputJoinQuery,
+	}
 )
 
 type Benchmark struct {
@@ -66,9 +105,8 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 		":sdks:java:testing:nexmark:run",
 	}
 
-	fmt.Printf("%s %s\n", GradlePath, strings.Join(args, " "))
 	c := exec.Command(GradlePath, args...)
-	c.Stderr = os.Stderr
+	// c.Stderr = os.Stderr
 	o, err := c.Output()
 	if err != nil {
 		return nil, err
@@ -111,6 +149,62 @@ func (b *Benchmark) AugmentResults(logger zerolog.Logger) (*Result, error) {
 	}, nil
 }
 
+// Battery two, create seperate outputfiles per query, to facilitate easier reruns
+func battery02(logger zerolog.Logger, outdir string) error {
+
+	// dir := filepath.Join(outdir, time.Now().UTC().Format("20060102150405"))
+	// if err := os.Mkdir(dir, 0755); err != nil {
+	// 	logger.Error().Err(err).Msg("Couldn't create directory")
+	// 	return err
+	// }
+	dir := filepath.Join(outdir, "patchy")
+
+	queries := AllQueries
+
+	for _, query := range queries {
+		logger := logger.With().Str("query", query).Logger()
+		fname := filepath.Join(dir, query+".json")
+
+		if ok, err := FileExists(fname); !ok && err == nil {
+			logger.Info().Msg("Skipping because of completed file")
+			continue
+		}
+
+		aout, err := renameio.TempFile("", fname)
+		if err != nil {
+			return err
+		}
+		defer aout.Cleanup()
+
+		bb := Benchmark{
+			FlinkMaster: "[local]",
+			// FlinkMaster:        "localhost",
+			JavascriptFilename: fmt.Sprintf("%s/battery02.js", outdir),
+			NumEvents:          IntPtr(MAX_EVENTS),
+			Query:              query,
+		}
+
+		mutator := VaryCoderStrategy([]string{"HAND", "AVRO", "JAVA"})(
+			SwapFasterCopy(
+				RepeatRuns(10)(
+					TimerMutator(
+						StoreBench(aout),
+					),
+				),
+			),
+		)
+
+		if err := mutator(logger, bb); err != nil {
+			return err
+		}
+
+		if err := aout.CloseAtomicallyReplace(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Battery one
 //
 // Simple test, create an aggregated output file with
@@ -126,15 +220,17 @@ func battery01(logger zerolog.Logger, outdir string) error {
 	bb := Benchmark{
 		FlinkMaster:        "[local]",
 		JavascriptFilename: fmt.Sprintf("%s/battery01.js", outdir),
-		NumEvents:          IntPtr(1000000),
+		NumEvents:          IntPtr(MAX_EVENTS),
 		Query:              PassthroughQuery,
 	}
 
-	mutator := VaryCoderStrategy([]string{"AVRO", "JAVA", "HAND"})(
-		SwapFasterCopy(
-			RepeatRuns(10)(
-				TimerMutator(
-					StoreBench(fp),
+	mutator := VaryQuery(AllQueries)(
+		VaryCoderStrategy([]string{"HAND", "AVRO", "JAVA"})(
+			SwapFasterCopy(
+				RepeatRuns(10)(
+					TimerMutator(
+						StoreBench(fp),
+					),
 				),
 			),
 		),
@@ -143,16 +239,6 @@ func battery01(logger zerolog.Logger, outdir string) error {
 	if err := mutator(logger, bb); err != nil {
 		return err
 	}
-
-	// for i := 0; i < 10; i++ {
-	// 	logger := logger.With().Int("run", i).Logger()
-	// 	logger.Debug().Msg("Starting run")
-
-	// 	if err := mutator(logger, bb); err != nil {
-	// 		logger.Error().Err(err).Msg("Error during run")
-	// 		break
-	// 	}
-	// }
 
 	return nil
 }
@@ -163,11 +249,14 @@ func main() {
 		w.TimeFormat = time.Stamp
 	}
 	logger := zerolog.New(zerolog.NewConsoleWriter(opts)).
-		With().Timestamp().Logger().Level(zerolog.DebugLevel)
+		With().Timestamp().Logger().Level(zerolog.InfoLevel)
 	// logger = logger.Level(zerolog.InfoLevel)
 
 	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
-	if err := battery01(logger, basedir+"/battery01/"); err != nil {
+	// if err := battery01(logger, basedir+"/battery01"); err != nil {
+	// 	logger.Fatal().Err(err).Msg("Couldn't run benchmark")
+	// }
+	if err := battery02(logger, basedir+"/battery02"); err != nil {
 		logger.Fatal().Err(err).Msg("Couldn't run benchmark")
 	}
 }

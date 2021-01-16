@@ -99,3 +99,11 @@ all of them be in order, then it could simply take the first one as the start po
 replay them relative to the first timestamp.
 
 Not sure if I could write this middleware in go or it would have to be in java.
+
+# Coder Strategy crashes when run from golang
+
+Don't know why, going to check if running the flink cluster externally helps
+
+This doesn't appear to have anything to do with golang, rather the number of events.
+
+It crashes at 991684, events, no matter what. 

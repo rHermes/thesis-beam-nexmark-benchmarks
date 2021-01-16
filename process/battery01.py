@@ -32,10 +32,17 @@ def wrangle(res):
 
 def convert_to_df(wr):
     df = pd.DataFrame.from_records(wr)
-    df.coder = df.coder.astype("category")
+    df["coder"] = df["coder"].astype("category")
     df["query"] = df["query"].astype("category")
 
+    # We do some preprocessing here.
+    df = df.set_index(["query", "coder", "faster_copy"]).sort_index()
+
     return df
+
+# Process does the processing we want
+def process(df):
+    pass
     
 
 
