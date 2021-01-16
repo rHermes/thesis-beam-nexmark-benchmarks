@@ -6,7 +6,8 @@ type Result struct {
 }
 
 type Extra struct {
-	FasterCopy bool `json:"faster_copy"`
+	FasterCopy  bool `json:"faster_copy"`
+	Parallelism int  `json:"parallelism"`
 }
 
 type JSResult struct {

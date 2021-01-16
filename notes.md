@@ -107,3 +107,8 @@ Don't know why, going to check if running the flink cluster externally helps
 This doesn't appear to have anything to do with golang, rather the number of events.
 
 It crashes at 991684, events, no matter what. 
+
+
+# `LOCAL_ITEM_SUGGESTION` doesn't work with JAVA Coder
+
+It has something to with keys and shuffeling. I don't really know

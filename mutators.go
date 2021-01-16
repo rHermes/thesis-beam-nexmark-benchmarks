@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -111,9 +112,10 @@ func SwapFasterCopy(mut Mutator) Mutator {
 func StoreBench(dst io.Writer) Mutator {
 	jwer := json.NewEncoder(dst)
 	return func(logger zerolog.Logger, bench Benchmark) error {
-		_, err := bench.Run(logger, GradlePath, BeamPath)
+		gg, err := bench.Run(logger, GradlePath, BeamPath)
 		if err != nil {
 			logger.Error().Err(err).Msg("Something went wrong in the writing")
+			fmt.Printf("%s\n", gg)
 			return err
 		}
 

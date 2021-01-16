@@ -66,6 +66,7 @@ type Benchmark struct {
 	FlinkMaster        string
 	JavascriptFilename string
 	Query              string
+	Parallelism        int
 
 	NumEventGenerators *int
 	NumEvents          *int
@@ -86,6 +87,7 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 		fmt.Sprintf("--query=%s", b.Query),
 		fmt.Sprintf("--javascriptFilename=%s", b.JavascriptFilename),
 		fmt.Sprintf("--fasterCopy=%t", b.FasterCopy),
+		fmt.Sprintf("--parallelism=%d", b.Parallelism),
 	}
 	if b.NumEvents != nil {
 		nargs = append(nargs, fmt.Sprintf("--numEvents=%d", *b.NumEvents))
@@ -106,7 +108,7 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	}
 
 	c := exec.Command(GradlePath, args...)
-	// c.Stderr = os.Stderr
+	c.Stderr = os.Stderr
 	o, err := c.Output()
 	if err != nil {
 		return nil, err
@@ -144,7 +146,8 @@ func (b *Benchmark) AugmentResults(logger zerolog.Logger) (*Result, error) {
 	return &Result{
 		JSResult: jres[0],
 		Extra: Extra{
-			FasterCopy: b.FasterCopy,
+			FasterCopy:  b.FasterCopy,
+			Parallelism: b.Parallelism,
 		},
 	}, nil
 }
@@ -157,7 +160,8 @@ func battery02(logger zerolog.Logger, outdir string) error {
 	// 	logger.Error().Err(err).Msg("Couldn't create directory")
 	// 	return err
 	// }
-	dir := filepath.Join(outdir, "patchy")
+	// dir := filepath.Join(outdir, "patchy")
+	dir := filepath.Join(outdir, "lucy")
 
 	queries := AllQueries
 
@@ -165,7 +169,7 @@ func battery02(logger zerolog.Logger, outdir string) error {
 		logger := logger.With().Str("query", query).Logger()
 		fname := filepath.Join(dir, query+".json")
 
-		if ok, err := FileExists(fname); !ok && err == nil {
+		if ok, err := FileExists(fname); ok && err == nil {
 			logger.Info().Msg("Skipping because of completed file")
 			continue
 		}
@@ -182,9 +186,15 @@ func battery02(logger zerolog.Logger, outdir string) error {
 			JavascriptFilename: fmt.Sprintf("%s/battery02.js", outdir),
 			NumEvents:          IntPtr(MAX_EVENTS),
 			Query:              query,
+			Parallelism:        2,
 		}
 
-		mutator := VaryCoderStrategy([]string{"HAND", "AVRO", "JAVA"})(
+		coders := []string{"HAND", "AVRO", "JAVA"}
+		if query == LocalItemSuggestionQuery {
+			coders = []string{"HAND", "AVRO"}
+		}
+
+		mutator := VaryCoderStrategy(coders)(
 			SwapFasterCopy(
 				RepeatRuns(10)(
 					TimerMutator(
