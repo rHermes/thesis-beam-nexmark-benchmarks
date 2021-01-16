@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,7 +65,7 @@ var (
 
 type Benchmark struct {
 	FlinkMaster        string
-	JavascriptFilename string
+	JavascriptFilename string `json:"-"`
 	Query              string
 	Parallelism        int
 
@@ -76,7 +77,7 @@ type Benchmark struct {
 	FasterCopy bool
 }
 
-func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]byte, error) {
+func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]byte, []byte, error) {
 	nargs := []string{
 		"--runner=FlinkRunner",
 		"--streaming",
@@ -108,13 +109,15 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	}
 
 	c := exec.Command(GradlePath, args...)
+	var stdout, stderr bytes.Buffer
 	// c.Stderr = os.Stderr
-	o, err := c.Output()
-	if err != nil {
-		return nil, err
+	c.Stderr = &stderr
+	c.Stdout = &stdout
+	if err := c.Run(); err != nil {
+		return stdout.Bytes(), stderr.Bytes(), err
 	}
-	// return []byte{}, nil
-	return o, nil
+
+	return stdout.Bytes(), stderr.Bytes(), nil
 }
 
 // Reads in the javascript file and adds the extra info to the result.
@@ -171,16 +174,78 @@ func main() {
 
 	store, err := NewStore(logger, basedir+"/dbs/proto.db")
 	if err != nil {
-		logger.Error().Err(err).Msg("Couldn't open the store")
+		logger.Fatal().Err(err).Msg("Couldn't open the store")
 	}
 	defer store.Close()
 
+	if err := battery03(logger, store, basedir+"/battery03"); err != nil {
+		logger.Fatal().Err(err).Msg("couldn't run the battery")
+	}
+
+}
+
+func battery03GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
+	baseBench := Benchmark{
+		FlinkMaster: "[local]",
+		NumEvents:   IntPtr(MAX_EVENTS),
+		Parallelism: 2,
+	}
+
+	var benches []Benchmark
+
+	queries := AllQueries
+
+	for _, query := range queries {
+		baseBench.Query = query
+
+		coders := []string{"HAND", "AVRO", "JAVA"}
+		if query == LocalItemSuggestionQuery {
+			coders = []string{"HAND", "AVRO"}
+		}
+
+		mutator := VaryCoderStrategy(coders)(
+			SwapFasterCopy(
+				RepeatRuns(10)(
+					TimerMutator(
+						ArrayBench(&benches),
+					),
+				),
+			),
+		)
+
+		if err := mutator(logger, baseBench); err != nil {
+			return nil, err
+		}
+	}
+
+	return benches, nil
 }
 
 // Battery three, use bolt to craft the various setups.
-func battery03(logger zerolog.Logger, store *Store) error {
+func battery03(logger zerolog.Logger, store *Store, outdir string) error {
 	sid := "first"
-	sid = sid
+
+	if ok, err := store.HasSeries(sid); err != nil {
+		return err
+	} else if !ok {
+		logger.Info().Msg("Creating series in database")
+		benches, err := battery03GenerateBenchmarks(logger)
+		if err != nil {
+			return err
+		}
+		// for _, bench := range benches {
+		// 	fmt.Printf("%#v\n", bench)
+		// }
+
+		if err := store.StoreSeries(sid, benches); err != nil {
+			return err
+		}
+	}
+
+	if err := store.RunSeries(sid); err != nil {
+		logger.Error().Err(err).Msg("Couldn't run series")
+		return err
+	}
 
 	return nil
 }

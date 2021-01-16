@@ -26,6 +26,10 @@ func itob(v int) []byte {
 	return b
 }
 
+func btoi(b []byte) int {
+	return int(binary.BigEndian.Uint64(b))
+}
+
 func Bprintf(format string, a ...interface{}) []byte {
 	return []byte(fmt.Sprintf(format, a...))
 }
