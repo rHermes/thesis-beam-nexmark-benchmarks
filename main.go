@@ -108,7 +108,7 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	}
 
 	c := exec.Command(GradlePath, args...)
-	c.Stderr = os.Stderr
+	// c.Stderr = os.Stderr
 	o, err := c.Output()
 	if err != nil {
 		return nil, err
@@ -150,6 +150,39 @@ func (b *Benchmark) AugmentResults(logger zerolog.Logger) (*Result, error) {
 			Parallelism: b.Parallelism,
 		},
 	}, nil
+}
+
+func main() {
+	opts := func(w *zerolog.ConsoleWriter) {
+		w.NoColor = true
+		w.TimeFormat = time.Stamp
+	}
+	logger := zerolog.New(zerolog.NewConsoleWriter(opts)).
+		With().Timestamp().Logger().Level(zerolog.InfoLevel)
+	// logger = logger.Level(zerolog.InfoLevel)
+
+	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
+	// if err := battery01(logger, basedir+"/battery01"); err != nil {
+	// 	logger.Fatal().Err(err).Msg("Couldn't run benchmark")
+	// }
+	// if err := battery02(logger, basedir+"/battery02"); err != nil {
+	// 	logger.Fatal().Err(err).Msg("Couldn't run benchmark")
+	// }
+
+	store, err := NewStore(logger, basedir+"/dbs/proto.db")
+	if err != nil {
+		logger.Error().Err(err).Msg("Couldn't open the store")
+	}
+	defer store.Close()
+
+}
+
+// Battery three, use bolt to craft the various setups.
+func battery03(logger zerolog.Logger, store *Store) error {
+	sid := "first"
+	sid = sid
+
+	return nil
 }
 
 // Battery two, create seperate outputfiles per query, to facilitate easier reruns
@@ -251,22 +284,4 @@ func battery01(logger zerolog.Logger, outdir string) error {
 	}
 
 	return nil
-}
-
-func main() {
-	opts := func(w *zerolog.ConsoleWriter) {
-		w.NoColor = true
-		w.TimeFormat = time.Stamp
-	}
-	logger := zerolog.New(zerolog.NewConsoleWriter(opts)).
-		With().Timestamp().Logger().Level(zerolog.InfoLevel)
-	// logger = logger.Level(zerolog.InfoLevel)
-
-	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
-	// if err := battery01(logger, basedir+"/battery01"); err != nil {
-	// 	logger.Fatal().Err(err).Msg("Couldn't run benchmark")
-	// }
-	if err := battery02(logger, basedir+"/battery02"); err != nil {
-		logger.Fatal().Err(err).Msg("Couldn't run benchmark")
-	}
 }

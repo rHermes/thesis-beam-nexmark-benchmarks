@@ -11,23 +11,21 @@ def nested_get(dic, keys):
 
 # Returns just the object fields we care about
 def wrangle(res):
-    props = [
-        ("query", "config.query"),
-        ("faster_copy", "extra.faster_copy"),
-        ("num_events", "perf.numEvents"),
-        ("num_results", "perf.numResults"),
-        ("events_per_sec", "perf.eventsPerSec"),
-        ("results_per_sec", "perf.resultsPerSec"),
-        ("runtime_sec", "perf.runtimeSec"),
-        ("coder", "config.coderStrategy"),
-        ("avg_auction_size", "config.avgAuctionByteSize"),
-        ("avg_bid_size", "config.avgBidByteSize"),
-        ("avg_person_size", "config.avgPersonByteSize"),
-    ]
-    ret = {}
-    for name, keys in props:
-        ret[name] = nested_get(res, keys.split("."))
-
+    props = {
+        "query":            "config.query",
+        "faster_copy":      "extra.faster_copy",
+        "num_events":       "perf.numEvents",
+        "num_results":      "perf.numResults",
+        "events_per_sec":   "perf.eventsPerSec",
+        "results_per_sec":  "perf.resultsPerSec",
+        "runtime_sec":      "perf.runtimeSec",
+        "coder":            "config.coderStrategy",
+        "avg_auction_size": "config.avgAuctionByteSize",
+        "avg_bid_size":     "config.avgBidByteSize",
+        "avg_person_size":  "config.avgPersonByteSize",
+        "parallelism": "extra.parallelism",
+    }
+    ret = {name: nested_get(res, keys.split(".")) for name, keys in props.items()}
     return ret
 
 def convert_to_df(wr):

@@ -112,3 +112,5 @@ It crashes at 991684, events, no matter what.
 # `LOCAL_ITEM_SUGGESTION` doesn't work with JAVA Coder
 
 It has something to with keys and shuffeling. I don't really know
+
+# WE set the flink properties with environment variables.

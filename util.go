@@ -1,6 +1,10 @@
 package main
 
-import "os"
+import (
+	"encoding/binary"
+	"fmt"
+	"os"
+)
 
 func IntPtr(a int) *int {
 	return &a
@@ -13,4 +17,15 @@ func FileExists(name string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// itob returns an 8-byte big endian representation of v.
+func itob(v int) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, uint64(v))
+	return b
+}
+
+func Bprintf(format string, a ...interface{}) []byte {
+	return []byte(fmt.Sprintf(format, a...))
 }
