@@ -180,10 +180,85 @@ func main() {
 	}
 	defer store.Close()
 
-	if err := battery03(logger, store, basedir+"/battery03"); err != nil {
+	// if err := battery03(logger, store, basedir+"/battery03"); err != nil {
+	// 	logger.Fatal().Err(err).Msg("couldn't run the battery")
+	// }
+	if err := battery04(logger, store, basedir+"/battery04"); err != nil {
 		logger.Fatal().Err(err).Msg("couldn't run the battery")
 	}
 
+}
+
+// Battery04: Check how the difference changes parallelism is changed
+func battery04GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
+	baseBench := Benchmark{
+		FlinkMaster:   "[local]",
+		NumEvents:     IntPtr(MAX_EVENTS),
+		CoderStrategy: "HAND",
+	}
+
+	var benches []Benchmark
+	mutator := UseParallelism([]int{1, 2, 4, 8})(
+		VaryQuery(AllQueries)(
+			SwapFasterCopy(
+				RepeatRuns(5)(
+					ArrayBench(&benches),
+				),
+			),
+		),
+	)
+
+	if err := mutator(logger, baseBench); err != nil {
+		return nil, err
+	}
+
+	return benches, nil
+}
+
+func battery04(logger zerolog.Logger, store *Store, outdir string) error {
+	sid := "bat04-04"
+
+	if ok, err := store.HasSeries(sid); err != nil {
+		return err
+	} else if !ok {
+		logger.Info().Msg("Creating series in database")
+		benches, err := battery04GenerateBenchmarks(logger)
+		if err != nil {
+			return err
+		}
+		logger.Info().Int("benches", len(benches)).Msg("Generated benches")
+
+		if err := store.StoreSeries(sid, benches); err != nil {
+			return err
+		}
+	}
+
+	if err := store.RunSeries(sid); err != nil {
+		logger.Error().Err(err).Msg("Couldn't run series")
+		return err
+	}
+
+	runs, err := store.GetSeriesResults(sid)
+	if err != nil {
+		logger.Error().Err(err).Msg("Couldn't retrieve series results")
+		return err
+	}
+
+	fr, err := os.Create(outdir + "/wow.json")
+	if err != nil {
+		return err
+	}
+	defer fr.Close()
+
+	jec := json.NewEncoder(fr)
+
+	for _, run := range runs {
+		if err := jec.Encode(run); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func battery03GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {

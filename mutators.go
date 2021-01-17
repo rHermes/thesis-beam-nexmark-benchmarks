@@ -27,6 +27,35 @@ func VaryNumberOfGenerators(start, end, step int) Middleware {
 	}
 }
 
+func UseParallelism(vals []int) Middleware {
+	return func(mut Mutator) Mutator {
+		return func(logger zerolog.Logger, b Benchmark) error {
+			for _, val := range vals {
+				b.Parallelism = val
+				logger := logger.With().Int("parallelism", val).Logger()
+				if err := mut(logger, b); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+}
+func VaryParallelism(start, end, step int) Middleware {
+	return func(mut Mutator) Mutator {
+		return func(logger zerolog.Logger, b Benchmark) error {
+			for i := start; i < end; i += step {
+				b.Parallelism = i
+				logger := logger.With().Int("parallelism", i).Logger()
+				if err := mut(logger, b); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+}
+
 func VaryCoderStrategy(strats []string) Middleware {
 	return func(mut Mutator) Mutator {
 		return func(logger zerolog.Logger, b Benchmark) error {
