@@ -111,6 +111,8 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	c := exec.Command(GradlePath, args...)
 	var stdout, stderr bytes.Buffer
 	// c.Stderr = os.Stderr
+	// mm := io.MultiWriter(os.Stderr, &stderr)
+	// mo := io.MultiWriter(os.Stdout, &stdout)
 	c.Stderr = &stderr
 	c.Stdout = &stdout
 	if err := c.Run(); err != nil {
@@ -245,6 +247,30 @@ func battery03(logger zerolog.Logger, store *Store, outdir string) error {
 	if err := store.RunSeries(sid); err != nil {
 		logger.Error().Err(err).Msg("Couldn't run series")
 		return err
+	}
+
+	runs, err := store.GetSeriesResults(sid)
+	if err != nil {
+		logger.Error().Err(err).Msg("Couldn't retrieve series results")
+		return err
+	}
+
+	fr, err := os.Create(outdir + "/wow.json")
+	if err != nil {
+		return err
+	}
+	defer fr.Close()
+
+	jec := json.NewEncoder(fr)
+
+	for _, run := range runs {
+		if err := jec.Encode(run); err != nil {
+			return err
+		}
+		// fmt.Printf("Run %d status: %s\n", bid, run.Status)
+		// if run.Status == StatusOK {
+		// 	fmt.Printf("Time spent: %f\n", run.Result.Perf.RuntimeSec)
+		// }
 	}
 
 	return nil

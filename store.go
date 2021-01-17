@@ -29,15 +29,6 @@ var (
 	ErrorSeriesNotFound = errors.New("Series not found")
 )
 
-type Run struct {
-	Series string
-	Status string
-
-	Result *Result
-	Stdout *string
-	Stderr *string
-}
-
 // A store stores data. The idea is that you have a list of series, which consists of benchmarks.
 type Store struct {
 	logger zerolog.Logger
@@ -179,6 +170,10 @@ func (s *Store) RunSeries(sid string) error {
 		if status != StatusNotRun {
 			continue
 		}
+		if bench.CoderStrategy == "AVRO" && bench.Query == BoundedSideInputJoinQuery {
+			s.logger.Info().Msg("Skipping benchmark")
+			continue
+		}
 
 		if err := s.RunBenchmark(sid, bid, bench); err != nil {
 			log.Error().Err(err).Msg("Benchmark errored out")
@@ -195,10 +190,10 @@ func (s *Store) RunBenchmark(sid string, bid int, bench Benchmark) error {
 	stdout, stderr, merr := bench.Run(s.logger, GradlePath, BeamPath)
 	// We write the
 	if merr != nil {
-		fmt.Println(stderr)
+		// fmt.Println(stderr)
 	}
 
-	s.logger.Info().Msg("Running a benchmark")
+	// s.logger.Info().Msg("Running a benchmark")
 
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		series := tx.Bucket([]byte(sid))
@@ -233,4 +228,57 @@ func (s *Store) RunBenchmark(sid string, bid int, bench Benchmark) error {
 		return nil
 	})
 	return err
+}
+
+type Run struct {
+	Bench  Benchmark
+	Status string
+
+	Result *Result
+	Stdout *string
+	Stderr *string
+}
+
+func (s *Store) GetSeriesResults(sid string) ([]Run, error) {
+	var runs []Run
+	err := s.db.View(func(tx *bolt.Tx) error {
+		series := tx.Bucket([]byte(sid))
+		if series == nil {
+			return ErrorSeriesNotFound
+		}
+
+		c := series.Cursor()
+		for k, v := c.Seek(benchPrefix); k != nil && bytes.HasPrefix(k, benchPrefix); k, v = c.Next() {
+			var run Run
+			bid := k[len(benchPrefix):]
+			if err := json.Unmarshal(v, &(run.Bench)); err != nil {
+				return err
+			}
+
+			statusB := series.Get(append(statusPrefix, bid...))
+			if statusB == nil {
+				run.Status = StatusNotRun
+			} else {
+				run.Status = string(statusB)
+				if run.Status == StatusOK {
+					var res Result
+					if err := json.Unmarshal(series.Get(append(resultPrefix, bid...)), &res); err != nil {
+						s.logger.Error().Err(err).Msg("Couldn't get result?")
+						return err
+					}
+					run.Result = &res
+				}
+
+				run.Stderr = StrPtr(string(series.Get(append(stderrPrefix, bid...))))
+				run.Stdout = StrPtr(string(series.Get(append(stdoutPrefix, bid...))))
+			}
+
+			runs = append(runs, run)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return runs, nil
 }

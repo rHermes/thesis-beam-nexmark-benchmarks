@@ -10,6 +10,10 @@ func IntPtr(a int) *int {
 	return &a
 }
 
+func StrPtr(a string) *string {
+	return &a
+}
+
 // https://stackoverflow.com/a/22467409/712014
 func FileExists(name string) (bool, error) {
 	_, err := os.Stat(name)
