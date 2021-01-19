@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,6 +62,25 @@ var (
 		BoundedSideInputJoinQuery,
 		SessionSideInputJoinQuery,
 	}
+
+	// Queries that finish in a reasonable time.
+	NormalQueries = []string{
+		PassthroughQuery,
+		CurrencyConversionQuery,
+		SelectionQuery,
+		LocalItemSuggestionQuery,
+		AveragePriceForCategoryQuery,
+		HotItemsQuery,
+		AverageSellingPriceBySellerQuery,
+		// HighestBidQuery,
+		MonitorNewUsersQuery,
+		WinningBidsQuery,
+		// LogToShardedFilesQuery,
+		UserSessionsQuery,
+		ProcessingTimeWindowsQuery,
+		// BoundedSideInputJoinQuery,
+		SessionSideInputJoinQuery,
+	}
 )
 
 type Benchmark struct {
@@ -81,6 +101,7 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	nargs := []string{
 		"--runner=FlinkRunner",
 		"--streaming",
+		"--streamTimeout=60",
 		"--manageResources=false",
 		"--monitorJobs=true",
 		"--debug=true",
@@ -109,12 +130,18 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	}
 
 	c := exec.Command(GradlePath, args...)
+
 	var stdout, stderr bytes.Buffer
 	// c.Stderr = os.Stderr
 	// mm := io.MultiWriter(os.Stderr, &stderr)
 	// mo := io.MultiWriter(os.Stdout, &stdout)
 	c.Stderr = &stderr
 	c.Stdout = &stdout
+
+	if false {
+		c.Stderr = io.MultiWriter(os.Stderr, &stderr)
+		c.Stdout = io.MultiWriter(os.Stdout, &stdout)
+	}
 	if err := c.Run(); err != nil {
 		return stdout.Bytes(), stderr.Bytes(), err
 	}
@@ -193,15 +220,15 @@ func main() {
 func battery04GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
 	baseBench := Benchmark{
 		FlinkMaster:   "[local]",
-		NumEvents:     IntPtr(MAX_EVENTS),
+		NumEvents:     IntPtr(MAX_EVENTS * 5),
 		CoderStrategy: "HAND",
 	}
 
 	var benches []Benchmark
 	mutator := UseParallelism([]int{1, 2, 4, 8})(
-		VaryQuery(AllQueries)(
+		VaryQuery(NormalQueries)(
 			SwapFasterCopy(
-				RepeatRuns(5)(
+				RepeatRuns(10)(
 					ArrayBench(&benches),
 				),
 			),
@@ -216,7 +243,7 @@ func battery04GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
 }
 
 func battery04(logger zerolog.Logger, store *Store, outdir string) error {
-	sid := "bat04-04"
+	sid := "bat04-06"
 
 	if ok, err := store.HasSeries(sid); err != nil {
 		return err

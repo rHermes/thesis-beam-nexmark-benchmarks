@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -165,15 +164,28 @@ func (s *Store) RunSeries(sid string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Bench %d has status: %s\n", bid, status)
+		s.logger.Info().
+			Int("bid", bid).
+			Str("status", status).
+			Str("query", bench.Query).
+			Msg("Starting benchmark")
+		// fmt.Printf("Bench %d has status: %s\n", bid, status)
 
 		if status != StatusNotRun {
 			continue
 		}
-		if bench.CoderStrategy == "AVRO" && bench.Query == BoundedSideInputJoinQuery {
-			s.logger.Info().Msg("Skipping benchmark")
+
+		// These run so slowly, that we are excluding them.
+		if bench.Query == HighestBidQuery {
 			continue
 		}
+		if bench.Query == BoundedSideInputJoinQuery {
+			continue
+		}
+		// if bench.CoderStrategy == "AVRO" && bench.Query == BoundedSideInputJoinQuery {
+		// 	s.logger.Info().Msg("Skipping benchmark")
+		// 	continue
+		// }
 
 		if err := s.RunBenchmark(sid, bid, bench); err != nil {
 			log.Error().Err(err).Msg("Benchmark errored out")
