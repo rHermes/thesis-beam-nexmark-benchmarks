@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/renameio"
 	"github.com/robertkrimen/otto"
 	"github.com/rs/zerolog"
 )
@@ -42,6 +41,10 @@ const (
 
 	// Max we can do with different coders, don't know why
 	MAX_EVENTS = 991683
+
+	DefaultAveragePersonByteSize  = 200
+	DefaultAverageAuctionByteSize = 500
+	DefaultAverageBidByteSize     = 100
 )
 
 var (
@@ -72,14 +75,20 @@ var (
 		AveragePriceForCategoryQuery,
 		HotItemsQuery,
 		AverageSellingPriceBySellerQuery,
-		// HighestBidQuery,
 		MonitorNewUsersQuery,
 		WinningBidsQuery,
-		// LogToShardedFilesQuery,
 		UserSessionsQuery,
 		ProcessingTimeWindowsQuery,
-		// BoundedSideInputJoinQuery,
 		SessionSideInputJoinQuery,
+	}
+
+	// FastQueries
+	FastQueries = []string{
+		PassthroughQuery,
+		CurrencyConversionQuery,
+		SelectionQuery,
+		LocalItemSuggestionQuery,
+		MonitorNewUsersQuery,
 	}
 )
 
@@ -91,6 +100,10 @@ type Benchmark struct {
 
 	NumEventGenerators *int
 	NumEvents          *int
+
+	AveragePersonByteSize  *int
+	AverageAuctionByteSize *int
+	AverageBidByteSize     *int
 
 	CoderStrategy string
 
@@ -121,6 +134,16 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 		nargs = append(nargs, fmt.Sprintf("--coderStrategy=%s", b.CoderStrategy))
 	}
 
+	if b.AveragePersonByteSize != nil {
+		nargs = append(nargs, fmt.Sprintf("--avgPersonByteSize=%d", *b.AveragePersonByteSize))
+	}
+	if b.AverageAuctionByteSize != nil {
+		nargs = append(nargs, fmt.Sprintf("--avgAuctionByteSize=%d", *b.AverageAuctionByteSize))
+	}
+	if b.AverageBidByteSize != nil {
+		nargs = append(nargs, fmt.Sprintf("--avgBidByteSize=%d", *b.AverageBidByteSize))
+	}
+
 	args := []string{
 		"-p", beamPath,
 		"-Pnexmark.runner=:runners:flink:1.10",
@@ -132,9 +155,6 @@ func (b *Benchmark) Run(logger zerolog.Logger, gradlePath, beamPath string) ([]b
 	c := exec.Command(GradlePath, args...)
 
 	var stdout, stderr bytes.Buffer
-	// c.Stderr = os.Stderr
-	// mm := io.MultiWriter(os.Stderr, &stderr)
-	// mo := io.MultiWriter(os.Stdout, &stdout)
 	c.Stderr = &stderr
 	c.Stdout = &stdout
 
@@ -185,6 +205,8 @@ func (b *Benchmark) AugmentResults(logger zerolog.Logger) (*Result, error) {
 }
 
 func main() {
+	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
+
 	opts := func(w *zerolog.ConsoleWriter) {
 		w.NoColor = true
 		w.TimeFormat = time.Stamp
@@ -193,27 +215,91 @@ func main() {
 		With().Timestamp().Logger().Level(zerolog.InfoLevel)
 	// logger = logger.Level(zerolog.InfoLevel)
 
-	basedir := "/home/rhermes/commons/uni/thesis/beam-nexmark-benchmarks/results"
-	// if err := battery01(logger, basedir+"/battery01"); err != nil {
-	// 	logger.Fatal().Err(err).Msg("Couldn't run benchmark")
-	// }
-	// if err := battery02(logger, basedir+"/battery02"); err != nil {
-	// 	logger.Fatal().Err(err).Msg("Couldn't run benchmark")
-	// }
-
 	store, err := NewStore(logger, basedir+"/dbs/proto.db")
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Couldn't open the store")
 	}
 	defer store.Close()
 
-	// if err := battery03(logger, store, basedir+"/battery03"); err != nil {
+	// if err := storeBattery(logger, store, basedir, "first", battery03GenerateBenchmarks); err != nil {
 	// 	logger.Fatal().Err(err).Msg("couldn't run the battery")
 	// }
-	if err := battery04(logger, store, basedir+"/battery04"); err != nil {
+	// if err := storeBattery(logger, store, basedir, "bat04-06", battery04GenerateBenchmarks); err != nil {
+	// 	logger.Fatal().Err(err).Msg("couldn't run the battery")
+	// }
+	if err := storeBattery(logger, store, basedir, "bat05-02", battery05GenerateBenchmarks); err != nil {
 		logger.Fatal().Err(err).Msg("couldn't run the battery")
 	}
 
+}
+
+func storeBattery(logger zerolog.Logger, store *Store, outdir, sid string, genBench func(logger zerolog.Logger) ([]Benchmark, error)) error {
+	if ok, err := store.HasSeries(sid); err != nil {
+		return err
+	} else if !ok {
+		logger.Info().Msg("Creating series in database")
+		benches, err := genBench(logger)
+		if err != nil {
+			return err
+		}
+		logger.Info().Int("benches", len(benches)).Msg("Generated benches")
+
+		if err := store.StoreSeries(sid, benches); err != nil {
+			return err
+		}
+	}
+
+	if err := store.RunSeries(sid); err != nil {
+		logger.Error().Err(err).Msg("Couldn't run series")
+		return err
+	}
+
+	runs, err := store.GetSeriesResults(sid)
+	if err != nil {
+		logger.Error().Err(err).Msg("Couldn't retrieve series results")
+		return err
+	}
+
+	fr, err := os.Create(filepath.Join(outdir, sid+".json"))
+	if err != nil {
+		return err
+	}
+	defer fr.Close()
+
+	jec := json.NewEncoder(fr)
+
+	for _, run := range runs {
+		if err := jec.Encode(run); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func battery05GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
+	baseBench := Benchmark{
+		FlinkMaster:   "[local]",
+		NumEvents:     IntPtr(MAX_EVENTS * 5),
+		CoderStrategy: "HAND",
+		Parallelism:   8,
+		Query:         CurrencyConversionQuery,
+	}
+
+	var benches []Benchmark
+	mutator := VaryAvgBidSize(DefaultAverageBidByteSize, 10*DefaultAverageBidByteSize, DefaultAverageBidByteSize)(
+		SwapFasterCopy(
+			RepeatRuns(10)(
+				ArrayBench(&benches),
+			),
+		),
+	)
+
+	if err := mutator(logger, baseBench); err != nil {
+		return nil, err
+	}
+
+	return benches, nil
 }
 
 // Battery04: Check how the difference changes parallelism is changed
@@ -240,52 +326,6 @@ func battery04GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
 	}
 
 	return benches, nil
-}
-
-func battery04(logger zerolog.Logger, store *Store, outdir string) error {
-	sid := "bat04-06"
-
-	if ok, err := store.HasSeries(sid); err != nil {
-		return err
-	} else if !ok {
-		logger.Info().Msg("Creating series in database")
-		benches, err := battery04GenerateBenchmarks(logger)
-		if err != nil {
-			return err
-		}
-		logger.Info().Int("benches", len(benches)).Msg("Generated benches")
-
-		if err := store.StoreSeries(sid, benches); err != nil {
-			return err
-		}
-	}
-
-	if err := store.RunSeries(sid); err != nil {
-		logger.Error().Err(err).Msg("Couldn't run series")
-		return err
-	}
-
-	runs, err := store.GetSeriesResults(sid)
-	if err != nil {
-		logger.Error().Err(err).Msg("Couldn't retrieve series results")
-		return err
-	}
-
-	fr, err := os.Create(outdir + "/wow.json")
-	if err != nil {
-		return err
-	}
-	defer fr.Close()
-
-	jec := json.NewEncoder(fr)
-
-	for _, run := range runs {
-		if err := jec.Encode(run); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func battery03GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
@@ -323,158 +363,4 @@ func battery03GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
 	}
 
 	return benches, nil
-}
-
-// Battery three, use bolt to craft the various setups.
-func battery03(logger zerolog.Logger, store *Store, outdir string) error {
-	sid := "first"
-
-	if ok, err := store.HasSeries(sid); err != nil {
-		return err
-	} else if !ok {
-		logger.Info().Msg("Creating series in database")
-		benches, err := battery03GenerateBenchmarks(logger)
-		if err != nil {
-			return err
-		}
-		// for _, bench := range benches {
-		// 	fmt.Printf("%#v\n", bench)
-		// }
-
-		if err := store.StoreSeries(sid, benches); err != nil {
-			return err
-		}
-	}
-
-	if err := store.RunSeries(sid); err != nil {
-		logger.Error().Err(err).Msg("Couldn't run series")
-		return err
-	}
-
-	runs, err := store.GetSeriesResults(sid)
-	if err != nil {
-		logger.Error().Err(err).Msg("Couldn't retrieve series results")
-		return err
-	}
-
-	fr, err := os.Create(outdir + "/wow.json")
-	if err != nil {
-		return err
-	}
-	defer fr.Close()
-
-	jec := json.NewEncoder(fr)
-
-	for _, run := range runs {
-		if err := jec.Encode(run); err != nil {
-			return err
-		}
-		// fmt.Printf("Run %d status: %s\n", bid, run.Status)
-		// if run.Status == StatusOK {
-		// 	fmt.Printf("Time spent: %f\n", run.Result.Perf.RuntimeSec)
-		// }
-	}
-
-	return nil
-}
-
-// Battery two, create seperate outputfiles per query, to facilitate easier reruns
-func battery02(logger zerolog.Logger, outdir string) error {
-
-	// dir := filepath.Join(outdir, time.Now().UTC().Format("20060102150405"))
-	// if err := os.Mkdir(dir, 0755); err != nil {
-	// 	logger.Error().Err(err).Msg("Couldn't create directory")
-	// 	return err
-	// }
-	// dir := filepath.Join(outdir, "patchy")
-	dir := filepath.Join(outdir, "lucy")
-
-	queries := AllQueries
-
-	for _, query := range queries {
-		logger := logger.With().Str("query", query).Logger()
-		fname := filepath.Join(dir, query+".json")
-
-		if ok, err := FileExists(fname); ok && err == nil {
-			logger.Info().Msg("Skipping because of completed file")
-			continue
-		}
-
-		aout, err := renameio.TempFile("", fname)
-		if err != nil {
-			return err
-		}
-		defer aout.Cleanup()
-
-		bb := Benchmark{
-			FlinkMaster: "[local]",
-			// FlinkMaster:        "localhost",
-			JavascriptFilename: fmt.Sprintf("%s/battery02.js", outdir),
-			NumEvents:          IntPtr(MAX_EVENTS),
-			Query:              query,
-			Parallelism:        2,
-		}
-
-		coders := []string{"HAND", "AVRO", "JAVA"}
-		if query == LocalItemSuggestionQuery {
-			coders = []string{"HAND", "AVRO"}
-		}
-
-		mutator := VaryCoderStrategy(coders)(
-			SwapFasterCopy(
-				RepeatRuns(10)(
-					TimerMutator(
-						StoreBench(aout),
-					),
-				),
-			),
-		)
-
-		if err := mutator(logger, bb); err != nil {
-			return err
-		}
-
-		if err := aout.CloseAtomicallyReplace(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Battery one
-//
-// Simple test, create an aggregated output file with
-func battery01(logger zerolog.Logger, outdir string) error {
-	// Open a file for writing
-	aout := fmt.Sprintf("%s/battery01.%s.json", outdir, time.Now().UTC().Format("20060102150405"))
-	fp, err := os.OpenFile(aout, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer fp.Close()
-
-	bb := Benchmark{
-		FlinkMaster:        "[local]",
-		JavascriptFilename: fmt.Sprintf("%s/battery01.js", outdir),
-		NumEvents:          IntPtr(MAX_EVENTS),
-		Query:              PassthroughQuery,
-	}
-
-	mutator := VaryQuery(AllQueries)(
-		VaryCoderStrategy([]string{"HAND", "AVRO", "JAVA"})(
-			SwapFasterCopy(
-				RepeatRuns(10)(
-					TimerMutator(
-						StoreBench(fp),
-					),
-				),
-			),
-		),
-	)
-
-	if err := mutator(logger, bb); err != nil {
-		return err
-	}
-
-	return nil
 }

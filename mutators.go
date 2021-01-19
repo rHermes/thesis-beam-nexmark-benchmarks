@@ -41,6 +41,52 @@ func UseParallelism(vals []int) Middleware {
 		}
 	}
 }
+
+func VaryAvgPersonSize(start, end, step int) Middleware {
+	return func(mut Mutator) Mutator {
+		return func(logger zerolog.Logger, b Benchmark) error {
+			for i := start; i < end; i += step {
+				b.AveragePersonByteSize = IntPtr(i)
+				logger := logger.With().Int("avgPersonByteSize", i).Logger()
+				if err := mut(logger, b); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+}
+
+func VaryAvgAuctionSize(start, end, step int) Middleware {
+	return func(mut Mutator) Mutator {
+		return func(logger zerolog.Logger, b Benchmark) error {
+			for i := start; i < end; i += step {
+				b.AverageAuctionByteSize = IntPtr(i)
+				logger := logger.With().Int("avgAuctionByteSize", i).Logger()
+				if err := mut(logger, b); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+}
+
+func VaryAvgBidSize(start, end, step int) Middleware {
+	return func(mut Mutator) Mutator {
+		return func(logger zerolog.Logger, b Benchmark) error {
+			for i := start; i < end; i += step {
+				b.AverageBidByteSize = IntPtr(i)
+				logger := logger.With().Int("avgBidByteSize", i).Logger()
+				if err := mut(logger, b); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+}
+
 func VaryParallelism(start, end, step int) Middleware {
 	return func(mut Mutator) Mutator {
 		return func(logger zerolog.Logger, b Benchmark) error {
