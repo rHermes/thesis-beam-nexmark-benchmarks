@@ -227,7 +227,10 @@ func main() {
 	// if err := storeBattery(logger, store, basedir, "bat04-06", battery04GenerateBenchmarks); err != nil {
 	// 	logger.Fatal().Err(err).Msg("couldn't run the battery")
 	// }
-	if err := storeBattery(logger, store, basedir, "bat05-02", battery05GenerateBenchmarks); err != nil {
+
+	// Bat05-02 - is 100 to 1000 with 100 in step.
+	// Bat05-03 - is 100 to 10000 with 200 in step.
+	if err := storeBattery(logger, store, basedir, "bat05-03", battery05GenerateBenchmarks); err != nil {
 		logger.Fatal().Err(err).Msg("couldn't run the battery")
 	}
 
@@ -287,7 +290,7 @@ func battery05GenerateBenchmarks(logger zerolog.Logger) ([]Benchmark, error) {
 	}
 
 	var benches []Benchmark
-	mutator := VaryAvgBidSize(DefaultAverageBidByteSize, 10*DefaultAverageBidByteSize, DefaultAverageBidByteSize)(
+	mutator := VaryAvgBidSize(DefaultAverageBidByteSize, 100*DefaultAverageBidByteSize+1, 2*DefaultAverageBidByteSize)(
 		SwapFasterCopy(
 			RepeatRuns(10)(
 				ArrayBench(&benches),
